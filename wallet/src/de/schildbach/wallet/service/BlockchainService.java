@@ -17,12 +17,18 @@
 
 package de.schildbach.wallet.service;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.math.BigInteger;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Date;
 import java.util.LinkedList;
@@ -53,6 +59,7 @@ import com.google.bitcoin.core.Address;
 import com.google.bitcoin.core.Block;
 import com.google.bitcoin.core.BlockChain;
 import com.google.bitcoin.core.Peer;
+import com.google.bitcoin.core.PeerAddress;
 import com.google.bitcoin.core.PeerEventListener;
 import com.google.bitcoin.core.PeerGroup;
 import com.google.bitcoin.core.ScriptException;
@@ -68,8 +75,8 @@ import com.google.bitcoin.store.BlockStore;
 import com.google.bitcoin.store.BlockStoreException;
 import com.google.bitcoin.store.BoundedOverheadBlockStore;
 
-import de.schildbach.wallet.WalletApplication;
 import de.schildbach.wallet.Constants;
+import de.schildbach.wallet.WalletApplication;
 import de.schildbach.wallet.ui.WalletActivity;
 import de.schildbach.wallet.util.WalletUtils;
 import de.schildbach.wallet_test.R;
@@ -326,6 +333,7 @@ public class BlockchainService extends android.app.Service
 				if (trustedPeerHost.length() == 0)
 				{
 					peerGroup.setMaxConnections(Constants.MAX_CONNECTED_PEERS);
+					loadConnectedPeers();
 					peerGroup.addPeerDiscovery(Constants.TEST ? new IrcDiscovery(Constants.PEER_DISCOVERY_IRC_CHANNEL_TEST) : new DnsDiscovery(
 							Constants.NETWORK_PARAMETERS));
 				}
@@ -350,6 +358,9 @@ public class BlockchainService extends android.app.Service
 			}
 			else if (!hasEverything && peerGroup != null)
 			{
+				if (peerGroup.isRunning())
+					saveConnectedPeers();
+
 				System.out.println("stopping peergroup");
 				peerGroup.removeEventListener(peerEventListener);
 				peerGroup.removeWallet(wallet);
@@ -487,6 +498,9 @@ public class BlockchainService extends android.app.Service
 
 		application.getWallet().removeEventListener(walletEventListener);
 
+		if (peerGroup.isRunning())
+			saveConnectedPeers();
+
 		if (peerGroup != null)
 		{
 			peerGroup.removeEventListener(peerEventListener);
@@ -552,6 +566,88 @@ public class BlockchainService extends android.app.Service
 	private void removeBroadcastBlockchainState()
 	{
 		removeStickyBroadcast(new Intent(ACTION_BLOCKCHAIN_STATE));
+	}
+
+	private void saveConnectedPeers()
+	{
+		final List<Peer> peers = peerGroup.getConnectedPeers();
+		final int numPeers = peers.size();
+
+		if (numPeers > 0)
+		{
+			try
+			{
+				final Writer out = new OutputStreamWriter(openFileOutput(Constants.LAST_PEERS_FILENAME, MODE_PRIVATE), "UTF-8");
+
+				for (final Peer peer : peers)
+				{
+					final PeerAddress address = peer.getAddress();
+					final InetAddress addr = address.getAddr();
+					final int port = address.getPort();
+
+					out.write(addr.getHostAddress());
+					out.write(' ');
+					out.write(Integer.toString(port));
+					out.write('\n');
+				}
+
+				out.close();
+
+				System.out.println(numPeers + " last peers saved to: '" + Constants.LAST_PEERS_FILENAME + "'");
+			}
+			catch (final IOException x)
+			{
+				System.out.println("failed saving last peers to: '" + Constants.LAST_PEERS_FILENAME + "'");
+
+				x.printStackTrace();
+
+				deleteFile(Constants.LAST_PEERS_FILENAME);
+			}
+		}
+		else
+		{
+			System.out.println("no peers connected, deleting: '" + Constants.LAST_PEERS_FILENAME + "'");
+
+			deleteFile(Constants.LAST_PEERS_FILENAME);
+		}
+	}
+
+	private void loadConnectedPeers()
+	{
+		try
+		{
+			final BufferedReader in = new BufferedReader(new InputStreamReader(openFileInput(Constants.LAST_PEERS_FILENAME)));
+
+			int numPeers = 0;
+
+			while (true)
+			{
+				final String line = in.readLine();
+				if (line == null)
+					break;
+
+				final String[] parts = line.split(" ");
+
+				final PeerAddress address = new PeerAddress(InetAddress.getByName(parts[0]), Integer.parseInt(parts[1]));
+				peerGroup.addAddress(address);
+
+				numPeers++;
+			}
+
+			in.close();
+
+			System.out.println(numPeers + " last peers loaded from: '" + Constants.LAST_PEERS_FILENAME + "'");
+		}
+		catch (final FileNotFoundException x)
+		{
+			System.out.println("no last peers to load");
+		}
+		catch (final Exception x)
+		{
+			System.out.println("failed loading last peers from: '" + Constants.LAST_PEERS_FILENAME + "'");
+
+			x.printStackTrace();
+		}
 	}
 
 	public void notifyWidgets()

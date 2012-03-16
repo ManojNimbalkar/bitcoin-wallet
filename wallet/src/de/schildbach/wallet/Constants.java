@@ -64,6 +64,10 @@ public class Constants
 	private static final String BLOCKCHAIN_FILENAME_TEST = "blockchain-testnet";
 	public static final String BLOCKCHAIN_FILENAME = TEST ? BLOCKCHAIN_FILENAME_TEST : BLOCKCHAIN_FILENAME_PROD;
 
+	private static final String LAST_PEERS_FILENAME_PROD = "last-peers";
+	private static final String LAST_PEERS_FILENAME_TEST = "last-peers-testnet";
+	public static final String LAST_PEERS_FILENAME = TEST ? LAST_PEERS_FILENAME_TEST : LAST_PEERS_FILENAME_PROD;
+
 	public static final String PEER_DISCOVERY_IRC_CHANNEL_PROD = "#bitcoin";
 	public static final String PEER_DISCOVERY_IRC_CHANNEL_TEST = "#bitcoinTEST";
 
